@@ -1,4 +1,4 @@
 cram_graspstability
 ===================
 
-Interface for the Grasp Stability Estimation
+Interface between the Grasp Stability Estimation and the CRAM planning system
