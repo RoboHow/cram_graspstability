@@ -13,35 +13,34 @@
     (setf *state-topic* state-topic)))
 
 (defmacro with-grasp-stability-awareness (context-id
-                                          worst-quality
+                                          worst-stability
                                           &body body)
   `(let ((state-fluent (make-fluent :name "state-fluent"
                                     :value :stopped))
          (return-value nil))
      (flet ((stability-state-callback (msg)
-              (with-fields (measurement_context_id
-                            grasp_quality) msg
+              (with-fields (context_id
+                            stability) msg
                 (cond
                   ((and
-                    (string= measurement_context_id ,context-id)
-                    (or (< grasp_quality ,worst-quality)))
+                    (string= context_id ,context-id)
+                    (< stability ,worst-quality))
                    (cpl:setf (value state-fluent) :failed))
-                  (t (format t "Reported grasp satisfies our requirements.~%"))))))
-       (let* ((control-service "/grasp_stability_estimator/control")
-              (state-topic "/grasp_stability_estimator/state")
-              (state-subscriber (roslisp:subscribe
-                                 state-topic
-                                 "grasp_stability_msgs/GraspStability"
+                  (t (format
+                      t "Reported grasp satisfies our requirements.~%"))))))
+       (let* ((state-subscriber (roslisp:subscribe
+                                 *state-topic*
+                                 "robohow_common_msgs/GraspStability"
                                  #'stability-state-callback)))
          (unwind-protect
               (progn
                 (roslisp:call-service
                  control-service
-                 "grasp_stability_msgs/Control"
+                 "robohow_common_msgs/Control"
                  :command (roslisp-msg-protocol:symbol-code
-                           'grasp_stability_msgs-srv:control-request
-                           :ctrl_start)
-                 :measurement_context_id ,context-id)
+                           'robohow_common_msgs-srv:graspstabilitycontrol
+                           :start)
+                 :context_id ,context-id)
                 (cpl:setf (value state-fluent) :running)
                 (pursue
                   (block state-fluent-checker
@@ -57,12 +56,12 @@
                       return-value))))
            (roslisp:unsubscribe state-subscriber)
            (roslisp:call-service
-            control-service
-            "grasp_stability_msgs/Control"
+            *control-service*
+            "robohow_common_msgs/Control"
             :command (roslisp-msg-protocol:symbol-code
-                      'grasp_stability_msgs-srv:control-request
+                      'robohow_common_msgs-srv:graspstabilitycontrol
                       :ctrl_stop)
-            :measurement_context_id ,context-id)
+            :context_id ,context-id)
            (when (eql (value state-fluent) :failed)
              (error 'grasp-stability-violated))
            return-value)))))

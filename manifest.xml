@@ -15,6 +15,6 @@
   <depend package="designators_ros"/>
   <depend package="alexandria" />
   <depend package="cram_reasoning" />
-  <depend package="grasp_stability_msgs" />
+  <depend package="robohow_common_msgs" />
 
 </package>

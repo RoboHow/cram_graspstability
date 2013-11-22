@@ -35,10 +35,9 @@
                cram-roslisp-common
                cram-reasoning
                alexandria
-               designators-ros
                cram-language
-               grasp_stability_msgs-msg
-               grasp_stability_msgs-srv)
+               robohow_common_msgs-msg
+               robohow_common_msgs-srv)
   :components
   ((:module "src"
     :components
