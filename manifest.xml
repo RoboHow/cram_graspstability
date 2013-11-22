@@ -1,0 +1,20 @@
+<package>
+  <description brief="cram_graspstability">
+
+     cram_graspstability
+
+  </description>
+  <author>Jan Winkler</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/cram_graspstability</url>
+  
+  <depend package="roslisp"/>
+  <depend package="cram_language"/>
+  <depend package="cram_roslisp_common"/>
+  <depend package="designators_ros"/>
+  <depend package="alexandria" />
+  <depend package="cram_reasoning" />
+  <depend package="grasp_stability_msgs" />
+
+</package>
