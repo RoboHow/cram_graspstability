@@ -5,6 +5,8 @@
 (defvar *control-service* "/grasp_stability_estimator/control")
 (defvar *state-topic* "/grasp_stability_estimator/state")
 
+(register-ros-init-function config)
+
 (defun config (&key (control-service nil control-service-p)
                     (state-topic nil state-topic-p))
   (when control-service-p
@@ -24,7 +26,7 @@
                 (cond
                   ((and
                     (string= context_id ,context-id)
-                    (< stability ,worst-quality))
+                    (< stability ,worst-stability))
                    (cpl:setf (value state-fluent) :failed))
                   (t (format
                       t "Reported grasp satisfies our requirements.~%"))))))
@@ -35,10 +37,10 @@
          (unwind-protect
               (progn
                 (roslisp:call-service
-                 control-service
-                 "robohow_common_msgs/Control"
+                 *control-service*
+                 "robohow_common_msgs/GraspStabilityControl"
                  :command (roslisp-msg-protocol:symbol-code
-                           'robohow_common_msgs-srv:graspstabilitycontrol
+                           'robohow_common_msgs-srv:graspstabilitycontrol-request
                            :start)
                  :context_id ,context-id)
                 (cpl:setf (value state-fluent) :running)
@@ -57,10 +59,10 @@
            (roslisp:unsubscribe state-subscriber)
            (roslisp:call-service
             *control-service*
-            "robohow_common_msgs/Control"
+            "robohow_common_msgs/GraspStabilityControl"
             :command (roslisp-msg-protocol:symbol-code
-                      'robohow_common_msgs-srv:graspstabilitycontrol
-                      :ctrl_stop)
+                      'robohow_common_msgs-srv:graspstabilitycontrol-request
+                      :stop)
             :context_id ,context-id)
            (when (eql (value state-fluent) :failed)
              (error 'grasp-stability-violated))
