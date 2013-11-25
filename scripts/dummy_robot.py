@@ -12,8 +12,7 @@ import threading
 class RobotControlUI:
     def __init__(self):
         rospy.init_node('cram_robot');
-        # self.pubState = rospy.Publisher('/grasp_stability_estimator/state', GraspStability, latch=True);
-        # self.srvControl = rospy.Service('/grasp_stability_estimator/control', GraspStabilityControl, self.control_callback)
+        rospy.Subscriber('/grasp_stability_estimator/state', GraspStability, self.state_callback);
         
         # The window
         self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
@@ -28,7 +27,7 @@ class RobotControlUI:
         # The start button
         self.button_start = gtk.Button("Start Task")
         self.button_start.connect("clicked", self.click_start, None)
-        self.button_start.set_sensitive(False)
+        self.button_start.set_sensitive(True)
         
         # The stop button
         self.button_stop = gtk.Button("Stop Task")
@@ -40,7 +39,7 @@ class RobotControlUI:
         self.button_reset.connect("clicked", self.click_reset, None)
         
         # The context list
-        self.list_store = gtk.ListStore(str)
+        self.list_store = gtk.ListStore(str, str, str, str)
         self.context_list = gtk.TreeView(self.list_store)
         col_contextid = gtk.TreeViewColumn('Context ID')
         col_taskname = gtk.TreeViewColumn('Task Name')
@@ -57,9 +56,9 @@ class RobotControlUI:
         col_minstab.pack_start(cell, 0)
         
         col_contextid.set_attributes(cell, text=0)
-        col_taskname.set_attributes(cell, text=0)
-        col_objectid.set_attributes(cell, text=0)
-        col_minstab.set_attributes(cell, text=0)
+        col_taskname.set_attributes(cell, text=1)
+        col_objectid.set_attributes(cell, text=2)
+        col_minstab.set_attributes(cell, text=3)
         list_selection = self.context_list.get_selection()
         list_selection.connect("changed", self.context_list_selection_changed)
         
@@ -83,6 +82,7 @@ class RobotControlUI:
         self.hbox_taskname.pack_start(self.txt_taskname, False, False, 5)
         self.txt_taskname.set_text('grasp')
         self.txt_taskname.set_width_chars(15)
+        self.txt_taskname.connect("changed", self.check_buttons)
         
         # Object ID
         self.hbox_objectid = gtk.HBox(False, 0)
@@ -92,6 +92,7 @@ class RobotControlUI:
         self.hbox_objectid.pack_start(self.txt_objectid, False, False, 5)
         self.txt_objectid.set_text('mug_1')
         self.txt_objectid.set_width_chars(15)
+        self.txt_objectid.connect("changed", self.check_buttons)
         
         # Context ID
         self.hbox_contextid = gtk.HBox(False, 0)
@@ -101,6 +102,7 @@ class RobotControlUI:
         self.hbox_contextid.pack_start(self.txt_contextid, False, False, 5)
         self.txt_contextid.set_text('left_gripper')
         self.txt_contextid.set_width_chars(15)
+        self.txt_contextid.connect("changed", self.check_buttons)
         
         # Minimum Grasp quality
         self.hbox_qual = gtk.HBox(False, 0)
@@ -110,6 +112,7 @@ class RobotControlUI:
         self.hbox_qual.pack_start(self.txt_graspqual, False, False, 5)
         self.txt_graspqual.set_text('0.73')
         self.txt_graspqual.set_width_chars(5)
+        self.txt_graspqual.connect("changed", self.check_buttons)
         
         # The settings vbox
         self.vbox2 = gtk.VBox(False, 0)
@@ -132,24 +135,37 @@ class RobotControlUI:
         
         gtk.gdk.threads_init()
         thread.start_new_thread(self.spinner, ())
-        
+
         gtk.main()
+    
+    def state_callback(self, msg):
+        for row in self.list_store:
+            if row[0] == msg.context_id:
+                if msg.stability < float(row[3]):
+                    # The stability got below our threshold.
+                    print "Context '%s' got below the minimum stability threshold (%f < %f). Disconnecting it."% (row[0], msg.stability, float(row[3]))
+                    self.context_selected = row[0]
+                    self.click_stop(None)
+    
+    def check_buttons(self, widget, data=None):
+        context_is_present = False
+        for x in range(0, len(self.list_store)):
+            item = self.list_store[x]
+            if item[0] == self.txt_contextid.get_text():
+                context_is_present = True
+                break;
         
-        pass;
+        fields_ok = False
+        if self.txt_contextid.get_text() != "" and self.txt_objectid.get_text() != "" and self.txt_taskname.get_text() != "" and self.txt_graspqual.get_text() != "":
+            fields_ok = True
+            
+        if fields_ok and not context_is_present:
+            self.button_start.set_sensitive(True)
+        else:
+            self.button_start.set_sensitive(False)
     
     def spinner(self):
         rospy.spin()
-    
-    def control_callback(self, req):
-        if req.command == 0:
-            self.add_context(req.context_id)
-        elif req.command == 1:
-            self.remove_context(req.context_id)
-        
-        ctrlRet = GraspStabilityControlResponse()
-        ctrlRet.result = 1;
-        
-        return ctrlRet
     
     def context_list_selection_changed(self, list_selection):
         (model, pathlist) = list_selection.get_selected_rows()
@@ -161,9 +177,9 @@ class RobotControlUI:
         
         self.context_selected = value
         if self.context_selected == '':
-            self.button_publish.set_sensitive(False)
+            self.button_stop.set_sensitive(False)
         else:
-            self.button_publish.set_sensitive(True)
+            self.button_stop.set_sensitive(True)
 
     def delete_event(self, widget, event, data=None):
         return False
@@ -179,37 +195,50 @@ class RobotControlUI:
         
     def click_start(self, widget, data=None):
         grasp_stability = float(self.txt_graspqual.get_text())
-        context_id = self.context_selected
+        context_id = self.txt_contextid.get_text()
+        task_name = self.txt_taskname.get_text()
+        object_id = self.txt_objectid.get_text()
+        graspqual = self.txt_graspqual.get_text()
         
-        rospy.sleep(0.1)
-        self.publish(grasp_stability, context_id)
-
-    def click_stop(self, widget, data=None):
-        grasp_stability = float(self.txt_graspqual.get_text())
-        context_id = self.context_selected
+        rospy.wait_for_service("/grasp_stability_estimator/control")
+        try:
+            control = rospy.ServiceProxy("/grasp_stability_estimator/control", GraspStabilityControl)
+            res = control(0, context_id, task_name, object_id)
+            
+            if res.result == 1:
+                self.add_context(context_id, task_name, object_id, graspqual)
+        except rospy.ServiceException, e:
+            print "Service call failed: %s"%e
         
-        rospy.sleep(0.1)
-        self.publish(grasp_stability, context_id)
+        self.check_buttons(None)
     
-    def add_context(self, context):
-        self.context_list.get_model().append([context])
+    def click_stop(self, widget, data=None):
+        context_id = self.context_selected
+        
+        rospy.wait_for_service("/grasp_stability_estimator/control")
+        try:
+            control = rospy.ServiceProxy("/grasp_stability_estimator/control", GraspStabilityControl)
+            res = control(1, context_id, "", "")
+            
+            if res.result == 1:
+                print "Removing %s"%context_id
+                self.remove_context(context_id)
+        except rospy.ServiceException, e:
+            print "Service call failed: %s"%e
+    
+    def add_context(self, context, taskname, objectid, minstab):
+        self.context_list.get_model().append([context, taskname, objectid, minstab])
     
     def remove_context(self, context):
         for row in self.list_store:
             if row[0] == context:
                 self.list_store.remove(row.iter)
+                self.check_buttons(None)
                 break
     
     def destroy(self, widget, data=None):
         self.quit()
     
-    def publish(self, stability, context):
-        gsPublish = GraspStability()
-        gsPublish.stability = stability
-        gsPublish.context_id = context
-        
-        self.pubState.publish(gsPublish)
-
 
 if __name__ == '__main__':
     rcuMain = RobotControlUI()

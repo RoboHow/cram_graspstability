@@ -35,13 +35,22 @@ class GraspStabilityControlUI:
         self.button_reset.connect("clicked", self.click_reset, None)
         
         # The context list
-        self.list_store = gtk.ListStore(str)
+        self.list_store = gtk.ListStore(str, str, str)
         self.context_list = gtk.TreeView(self.list_store)
-        col = gtk.TreeViewColumn('Context ID')
+        col_contextid = gtk.TreeViewColumn('Context ID')
+        col_taskname = gtk.TreeViewColumn('Task Name')
+        col_objectid = gtk.TreeViewColumn('Object ID')
         cell = gtk.CellRendererText()
-        self.context_list.append_column(col)
-        col.pack_start(cell, 0)
-        col.set_attributes(cell, text=0)
+        self.context_list.append_column(col_contextid)
+        self.context_list.append_column(col_taskname)
+        self.context_list.append_column(col_objectid)
+        col_contextid.pack_start(cell, 0)
+        col_taskname.pack_start(cell, 0)
+        col_objectid.pack_start(cell, 0)
+        
+        col_contextid.set_attributes(cell, text=0)
+        col_taskname.set_attributes(cell, text=1)
+        col_objectid.set_attributes(cell, text=2)
         list_selection = self.context_list.get_selection()
         list_selection.connect("changed", self.context_list_selection_changed)
         
@@ -92,13 +101,15 @@ class GraspStabilityControlUI:
         rospy.spin()
     
     def control_callback(self, req):
+        ctrlRet = GraspStabilityControlResponse()
+        ctrlRet.result = 0
+        
         if req.command == 0:
-            self.add_context(req.context_id)
+            if self.add_context(req.context_id, req.task_name, req.object_id) == True:
+                ctrlRet.result = 1
         elif req.command == 1:
             self.remove_context(req.context_id)
-        
-        ctrlRet = GraspStabilityControlResponse()
-        ctrlRet.result = 1;
+            ctrlRet.result = 1
         
         return ctrlRet
     
@@ -135,8 +146,20 @@ class GraspStabilityControlUI:
         rospy.sleep(0.1)
         self.publish(grasp_stability, context_id)
     
-    def add_context(self, context):
-        self.context_list.get_model().append([context])
+    def add_context(self, context, taskname, objectid):
+        context_is_present = False
+        for x in range(0, len(self.list_store)):
+            item = self.list_store[x]
+            if item[0] == context:
+                print "Context already registered: %s"%context
+                context_is_present = True
+                break
+        
+        if not context_is_present:
+            self.context_list.get_model().append([context, taskname, objectid])
+            return True
+        
+        return False
     
     def remove_context(self, context):
         for row in self.list_store:
