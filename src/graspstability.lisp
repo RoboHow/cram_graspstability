@@ -5,14 +5,14 @@
 (defvar *control-service* "/grasp_stability_estimator/control")
 (defvar *state-topic* "/grasp_stability_estimator/state")
 
-(register-ros-init-function config)
-
 (defun config (&key (control-service nil control-service-p)
                     (state-topic nil state-topic-p))
   (when control-service-p
     (setf *control-service* control-service))
   (when state-topic-p
     (setf *state-topic* state-topic)))
+
+(register-ros-init-function config)
 
 (defmacro with-grasp-stability-awareness (context-id
                                           worst-stability
