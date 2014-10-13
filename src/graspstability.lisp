@@ -12,7 +12,69 @@
   (when state-topic-p
     (setf *state-topic* state-topic)))
 
-(register-ros-init-function config)
+(roslisp-utilities:register-ros-init-function config)
+
+(define-policy grasp-stability-awareness (context-id worst-stability estimate-type object-name)
+  "Policy for monitoring the grasp stability of the current grasp and
+reacting accordingly."
+  (:init (let* ((state-fluent (make-fluent :name "grasp-stability-state-fluent"
+                                           :value :stopped))
+                (state-subscriber
+                  (roslisp:subscribe
+                   *state-topic*
+                   "robohow_common_msgs/GraspStability"
+                   (lambda (msg)
+                     (with-fields (context_id stability) msg
+                       (declare (ignore context_id))
+                       (format t "Got value: ~a~%" stability)
+                       (cond
+                         ((and
+                           ;(string= context_id context-id)
+                           (< stability worst-stability))
+                          (format t "Grasp was bad~%")
+                          (cpl:setf (value (cpl::policy-get 'state-fluent)) :failed))
+                         (t (format
+                             t "~a >= ~a~%" stability worst-stability))))))))
+           (cpl::policy-setf 'state-fluent state-fluent)
+           (cpl::policy-setf 'state-subscriber state-subscriber)
+           (block connector
+             (cpl:with-failure-handling
+                 (((or sb-bsd-sockets:connection-refused-error roslisp::ros-rpc-error) (f)
+                    (declare (ignore f))
+                    (return-from connector)))
+               (when (roslisp:wait-for-service *control-service* 2)
+                 (roslisp:call-service
+                  *control-service*
+                  "robohow_common_msgs/GraspStabilityControl"
+                  :command (roslisp-msg-protocol:symbol-code
+                            'robohow_common_msgs-srv:graspstabilitycontrol-request
+                            :start)
+                  :context_id context-id
+                  :object_id object-name
+                  :estimate_type estimate-type)
+                 (cpl:setf (value state-fluent) :running))))
+           (cpl:sleep* 2)
+           t))
+  (:check (let ((state-fluent (cpl::policy-get 'state-fluent)))
+            (wait-for state-fluent)
+            (case (value state-fluent)
+              (roslisp:ros-info "grasp stability" "Policy triggered: Grasp unstable.")
+              (:failed t))))
+  (:clean-up (let ((state-subscriber (cpl::policy-get 'state-subscriber)))
+               (roslisp:unsubscribe state-subscriber)
+               (block connector
+                 (cpl:with-failure-handling
+                     (((or sb-bsd-sockets:connection-refused-error roslisp::ros-rpc-error) (f)
+                        (declare (ignore f))
+                        (return-from connector)))
+                   (when (roslisp:wait-for-service *control-service* 2)
+                     (roslisp:call-service
+                      *control-service*
+                      "robohow_common_msgs/GraspStabilityControl"
+                      :command (roslisp-msg-protocol:symbol-code
+                                'robohow_common_msgs-srv:graspstabilitycontrol-request
+                                :stop)
+                      :context_id context-id)))))))
 
 (defmacro with-grasp-stability-awareness (context-id
                                           worst-stability
@@ -29,7 +91,7 @@
                     (< stability ,worst-stability))
                    (cpl:setf (value state-fluent) :failed))
                   (t (format
-                      t "Reported grasp satisfies our requirements.~%"))))))
+                      t "Reported grasp satisfies our requirements (~a >= ~a).~%" stability ,worst-stability))))))
        (let* ((state-subscriber (roslisp:subscribe
                                  *state-topic*
                                  "robohow_common_msgs/GraspStability"

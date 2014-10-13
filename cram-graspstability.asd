@@ -36,6 +36,7 @@
                cram-reasoning
                alexandria
                cram-language
+               roslisp-utilities
                robohow_common_msgs-msg
                robohow_common_msgs-srv)
   :components
